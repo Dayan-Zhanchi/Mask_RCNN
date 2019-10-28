@@ -8,6 +8,7 @@ import sys
 
 import numpy as np
 from pycocotools.coco import COCO
+from pycocotools import mask as maskUtils
 
 # Root directory of the project
 ROOT_DIR = os.path.abspath("../../")
@@ -127,8 +128,9 @@ class ClothesDataset(utils.Dataset):
         # Build mask of shape [height, width, instance_count] and list
         # of class IDs that correspond to each channel of the mask.
         for annotation in annotations:
+            # the class_id in this case will always correspond to the value of the category_id key in the given annotation
             class_id = self.map_source_class_id(
-                "coco.{}".format(annotation['category_id']))
+                "clothes.{}".format(annotation['category_id']))
             if class_id:
                 m = self.annToMask(annotation, image_info[image_id]["images"]["height"],
                                    image_info[image_id]["images"]["width"])
@@ -155,3 +157,32 @@ class ClothesDataset(utils.Dataset):
         else:
             # Call super class to return an empty mask
             return super(self.__class__, self).load_mask(image_id)
+
+    def annToRLE(self, ann, height, width):
+        """
+        Convert annotation which can be polygons, uncompressed RLE to RLE.
+        :return: binary mask (numpy 2D array)
+        """
+        segm = ann['segmentation']
+        if isinstance(segm, list):
+            # polygon -- a single object might consist of multiple parts
+            # we merge all parts into one mask rle code
+            rles = maskUtils.frPyObjects(segm, height, width)
+            rle = maskUtils.merge(rles)
+        elif isinstance(segm['counts'], list):
+            # uncompressed RLE
+            rle = maskUtils.frPyObjects(segm, height, width)
+        else:
+            # rle
+            rle = ann['segmentation']
+        return rle
+
+    def annToMask(self, ann, height, width):
+        """
+        Convert annotation which can be polygons, uncompressed RLE, or RLE to binary mask.
+        :return: binary mask (numpy 2D array)
+        """
+        rle = self.annToRLE(ann, height, width)
+        m = maskUtils.decode(rle)
+        return m
+
