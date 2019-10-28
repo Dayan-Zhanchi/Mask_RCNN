@@ -7,6 +7,7 @@ import os
 import sys
 
 import numpy as np
+import skimage
 from pycocotools.coco import COCO
 from pycocotools import mask as maskUtils
 
@@ -35,7 +36,7 @@ class ClothesConfig(Config):
     IMAGES_PER_GPU = 1
 
     # Number of classes (including background)
-    NUM_CLASSES = 1 + 13  # Background + balloon
+    NUM_CLASSES = 1 + 13  # Background + clothing categories
 
     # Number of training steps per epoch
     STEPS_PER_EPOCH = 100 / 2
@@ -47,10 +48,15 @@ class ClothesConfig(Config):
     # DETECTION_NMS_THRESHOLD = 0.5
 
 
+############################################################
+#  Dataset
+############################################################
+
 class ClothesDataset(utils.Dataset):
 
-    def load_clothes(self, number_of_data, dataset_dir, dataset_type, dataset_type_path):
-        """Load a subset of the deepfashion2 dataset.
+    def load_clothes(self, number_of_data, dataset_dir, dataset_type,
+                     dataset_type_path, image_dir_path):
+        """Load a subset of the deepfashion2 dataset. Max number of data is 191961 for training.
         dataset_dir: Root directory of the dataset.
         subset: Subset to load: train, validation or test
         """
@@ -68,11 +74,12 @@ class ClothesDataset(utils.Dataset):
         self.add_class("clothes", 12, "vest dress")
         self.add_class("clothes", 13, "sling dress")
 
-        # Train or validation dataset?
+        # Train, validation or test dataset?
         assert dataset_type in ["train", "validation", "test"]
-        dataset_dir = os.path.join(dataset_dir, dataset_type, dataset_type_path)
+        train_dataset_dir = os.path.join(dataset_dir, dataset_type, dataset_type_path)
+        image_dir = os.path.join(dataset_dir, dataset_type, image_dir_path)
 
-        coco = COCO(dataset_dir)
+        coco = COCO(train_dataset_dir)
         # for idx, file in enumerate(os.walk(dataset_dir)[2]):
         #     if idx == number_of_data:
         #         break
@@ -84,16 +91,15 @@ class ClothesDataset(utils.Dataset):
 
         # Add images
         for i in range(1, number_of_data + 1):
-            json_name = os.path.join(dataset_dir + "/" + str(i).zfill(6) + '.json')
 
             """we use coco.getAnnIds to get the corresponding annotations IDs for a given image ID. 
             Annotations are indexed at instance-level as opposed to image IDs which are indexed at image-level. 
             So number of image IDs < annotation IDs, since there can be more than 1 annotation in an image
             and therefore for a given image ID we can expect to get >= 1 annotations.
             """
-            self.add_image("clothes",
+            self.add_image(source="clothes",
                            image_id=i,  # we assume that the indices for the image_ids starts at 1 and keeps that format as they increment in value, i.e 1,2,3,4,5,.. etc
-                           path=json_name,
+                           path=os.path.join(image_dir, coco.imgs[i]['file_name']),
                            width=coco.imgs[i]['width'],
                            height=coco.imgs[i]['height'],
                            annotations=coco.loadAnns(coco.getAnnIds([i], iscrowd=None)))
@@ -105,6 +111,10 @@ class ClothesDataset(utils.Dataset):
         else:
             super(self.__class__, self).image_reference(image_id)
 
+    # TODO: return also keypoints (landmarks) so that landmark prediction can also be done,
+    #  right now I think only segmentation works but not landmark prediction.
+    #  Alternatively could create a new load_landmark method which returns landmarks.
+    #  There ought to be an issue on the repo we can find somewhere on this matter
     def load_mask(self, image_id):
         """Load instance masks for the given image.
 
@@ -132,8 +142,8 @@ class ClothesDataset(utils.Dataset):
             class_id = self.map_source_class_id(
                 "clothes.{}".format(annotation['category_id']))
             if class_id:
-                m = self.annToMask(annotation, image_info[image_id]["images"]["height"],
-                                   image_info[image_id]["images"]["width"])
+                m = self.annToMask(annotation, image_info["height"],
+                                   image_info["width"])
                 # Some objects are so small that they're less than 1 pixel area
                 # and end up rounded out. Skip those objects.
                 if m.max() < 1:
@@ -144,8 +154,8 @@ class ClothesDataset(utils.Dataset):
                     class_id *= -1
                     # For crowd masks, annToMask() sometimes returns a mask
                     # smaller than the given dimensions. If so, resize it.
-                    if m.shape[0] != image_info[image_id]["images"]["height"] or m.shape[1] != image_info[image_id]["images"]["width"]:
-                        m = np.ones([image_info[image_id]["images"]["height"], image_info[image_id]["images"]["width"]], dtype=bool)
+                    if m.shape[0] != image_info["height"] or m.shape[1] != image_info["width"]:
+                        m = np.ones([image_info["height"], image_info["width"]], dtype=bool)
                 instance_masks.append(m)
                 class_ids.append(class_id)
 
@@ -186,3 +196,6 @@ class ClothesDataset(utils.Dataset):
         m = maskUtils.decode(rle)
         return m
 
+    def load_image(self, image_id):
+        info = self.image_info[image_id]
+        return skimage.io.imread(info['path'])
