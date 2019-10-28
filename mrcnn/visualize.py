@@ -16,7 +16,7 @@ import colorsys
 import numpy as np
 from skimage.measure import find_contours
 import matplotlib
-matplotlib.use('webagg') # you may not need this row, depending on if you get warning with agg not being back-end GUI
+#matplotlib.use('webagg') # you may not need this row, depending on if you get warning with agg not being back-end GUI
 import matplotlib.pyplot as plt
 #import matplotlib.pyplot as plt
 from matplotlib import patches,  lines
