@@ -41,6 +41,9 @@ class ClothesConfig(Config):
     # Number of training steps per epoch
     STEPS_PER_EPOCH = 100 / 2
 
+    # NUMBER OF GPUs to use. When using only a CPU, this needs to be set to 1.
+    GPU_COUNT = 2
+
     # Version of backbone network architecture
     # BACKBONE = "resnet50"
 
